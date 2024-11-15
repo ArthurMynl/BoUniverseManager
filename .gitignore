@@ -1,0 +1,9 @@
+bin/**
+universes/**
+output/**
+.vscode/**
+logs/**
+
+application.properties
+Trace**
+**.xlsx

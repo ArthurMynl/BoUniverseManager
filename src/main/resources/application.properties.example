@@ -1,0 +1,4 @@
+bo.username=user
+bo.password=password
+bo.server=Server.CentralManagementServer
+bo.auth_type=secEnterprise
