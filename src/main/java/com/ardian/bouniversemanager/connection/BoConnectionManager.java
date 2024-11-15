@@ -60,8 +60,5 @@ public class BoConnectionManager {
             context.close();
             enterpriseSession.logoff();
         }
-
-        FileSystemCleaner fileSystemCleaner = new FileSystemCleaner();
-        fileSystemCleaner.deleteRetrievalFolders(Paths.get("universes"));
     }
 }
