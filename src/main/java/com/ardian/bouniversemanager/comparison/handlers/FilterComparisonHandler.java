@@ -1,4 +1,5 @@
 package main.java.com.ardian.bouniversemanager.comparison.handlers;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -7,24 +8,24 @@ import com.sap.sl.sdk.authoring.businesslayer.BlItem;
 import main.java.com.ardian.bouniversemanager.comparison.ChangeSet;
 import main.java.com.ardian.bouniversemanager.comparison.ComparisonContext;
 import main.java.com.ardian.bouniversemanager.comparison.FieldComparator;
-import main.java.com.ardian.bouniversemanager.comparison.fieldcomparators.DescriptionComparator;
-import main.java.com.ardian.bouniversemanager.comparison.fieldcomparators.NameComparator;
-import main.java.com.ardian.bouniversemanager.comparison.fieldcomparators.ParentPathComparator;
+import main.java.com.ardian.bouniversemanager.comparison.fieldcomparators.FilterTypeComparator;
+import main.java.com.ardian.bouniversemanager.comparison.fieldcomparators.WhereComparator;
 
-public class DefaultComparisonHandler implements ComparisonHandler {
+public class FilterComparisonHandler implements ComparisonHandler {
+    private final ComparisonHandler defaultHandler;
     private final List<FieldComparator> fieldComparators;
 
-    public DefaultComparisonHandler() {
+    public FilterComparisonHandler() {
+        this.defaultHandler = new DefaultComparisonHandler();
         this.fieldComparators = new ArrayList<>();
-        // Common field comparators
-        this.fieldComparators.add(new ParentPathComparator());
-        this.fieldComparators.add(new NameComparator());
-        this.fieldComparators.add(new DescriptionComparator());
+        // Measure-specific field comparators
+        this.fieldComparators.add(new FilterTypeComparator());
+        this.fieldComparators.add(new WhereComparator());
     }
 
     @Override
     public boolean compareFields(BlItem localItem, BlItem serverItem, String identifier, ChangeSet changes) {
-        boolean hasChange = false;
+        boolean hasChange = defaultHandler.compareFields(localItem, serverItem, identifier, changes);
         for (FieldComparator comparator : fieldComparators) {
             boolean changed = comparator.compare(new ComparisonContext(identifier, localItem, serverItem, changes));
             hasChange = hasChange || changed;

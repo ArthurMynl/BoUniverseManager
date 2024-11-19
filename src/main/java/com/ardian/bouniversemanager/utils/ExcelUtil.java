@@ -13,6 +13,7 @@ import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -21,14 +22,19 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import com.sap.sl.sdk.authoring.businesslayer.BlContainer;
 import com.sap.sl.sdk.authoring.businesslayer.BlItem;
+import com.sap.sl.sdk.authoring.businesslayer.BusinessFilter;
 import com.sap.sl.sdk.authoring.businesslayer.BusinessLayerFactory;
 import com.sap.sl.sdk.authoring.businesslayer.DataType;
 import com.sap.sl.sdk.authoring.businesslayer.Dimension;
+import com.sap.sl.sdk.authoring.businesslayer.Filter;
 import com.sap.sl.sdk.authoring.businesslayer.Folder;
 import com.sap.sl.sdk.authoring.businesslayer.Measure;
+import com.sap.sl.sdk.authoring.businesslayer.NativeRelationalFilter;
 import com.sap.sl.sdk.authoring.businesslayer.RelationalBinding;
 import com.sap.sl.sdk.authoring.businesslayer.RelationalBusinessLayer;
 import com.sap.sl.sdk.authoring.businesslayer.RootFolder;
+import com.sap.sl.sdk.framework.IStatus;
+import com.sap.sl.sdk.framework.Severity;
 import com.sap.sl.sdk.framework.SlContext;
 
 import main.java.com.ardian.bouniversemanager.models.Universe;
@@ -39,6 +45,7 @@ public class ExcelUtil {
     private static final String ITEM_TYPE_FOLDER = "FOLDER";
     private static final String ITEM_TYPE_DIMENSION = "DIMENSION";
     private static final String ITEM_TYPE_MEASURE = "MEASURE";
+    private static final String ITEM_TYPE_FILTER = "FILTER";
 
     private static int currentRowNum = 1;
 
@@ -185,6 +192,34 @@ public class ExcelUtil {
                 // WHERE
                 Cell whereCell = row.createCell(colIndex++);
                 whereCell.setCellValue(binding.getWhere());
+            } else if (blItem instanceof Filter) {
+                Filter filter = (Filter) blItem;
+
+                // ITEM TYPE
+                Cell itemTypeCell = row.createCell(colIndex++);
+                itemTypeCell.setCellValue("FILTER");
+
+                // FILTER TYPE
+                Cell filterTypeCell = row.createCell(colIndex++);
+                colIndex++; // skip the select column
+
+                if (filter instanceof NativeRelationalFilter) {
+                    filterTypeCell.setCellValue("NATIVE");
+
+                    // WHERE
+                    NativeRelationalFilter nativeFilter = (NativeRelationalFilter) filter;
+                    RelationalBinding binding = (RelationalBinding) nativeFilter.getBinding();
+                    Cell whereCell = row.createCell(colIndex++);
+                    whereCell.setCellValue(binding.getWhere());
+
+                } else if (filter instanceof BusinessFilter) {
+                    filterTypeCell.setCellValue("BUSINESS");
+
+                    // WHERE
+                    BusinessFilter businessFilter = (BusinessFilter) filter;
+                    Cell whereCell = row.createCell(colIndex++);
+                    whereCell.setCellValue(businessFilter.getExpression());
+                }
             }
         } else {
             int colIndex = maxDepth; // Start from column n+1 for details
@@ -193,8 +228,12 @@ public class ExcelUtil {
             Cell idCell = row.createCell(colIndex++);
             idCell.setCellValue(blItem.getIdentifier());
 
+            // DESCRIPTION
+            Cell descCell = row.createCell(colIndex++);
+            descCell.setCellValue(blItem.getDescription());
+
             // ITEM TYPE
-            Cell itemTypeCell = row.createCell(colIndex + 1);
+            Cell itemTypeCell = row.createCell(colIndex++);
             itemTypeCell.setCellValue("FOLDER");
         }
         // Recursively process children if it's a folder
@@ -339,11 +378,46 @@ public class ExcelUtil {
                             binding.setWhere(getCellValue(row.getCell(separatorIndex + 5)));
                             break;
 
+                        case ITEM_TYPE_FILTER:
+                            String filterType = getCellValue(row.getCell(separatorIndex + 3));
+                            
+                            if (filterType.equals("NATIVE")) {
+                                NativeRelationalFilter newFilter;
+                                if (!itemID.isEmpty()) {
+                                    newFilter = blxFactory.createBlItem(NativeRelationalFilter.class, itemName, currentParent, itemID);
+                                } else {
+                                    newFilter = blxFactory.createBlItem(NativeRelationalFilter.class, itemName, currentParent);
+                                }
+                                newFilter.setDescription(getCellValue(row.getCell(separatorIndex + 1)));
+
+                                binding = (RelationalBinding) newFilter.getBinding();
+                                binding.setWhere(getCellValue(row.getCell(separatorIndex + 5)));
+                            } else if (filterType.equals("BUSINESS")) {
+                                BusinessFilter newFilter;
+                                if (!itemID.isEmpty()) {
+                                    newFilter = blxFactory.createBlItem(BusinessFilter.class, itemName, currentParent, itemID);
+                                } else {
+                                    newFilter = blxFactory.createBlItem(BusinessFilter.class, itemName, currentParent);
+                                }
+                                newFilter.setDescription(getCellValue(row.getCell(separatorIndex + 1)));
+                                newFilter.setExpression(getCellValue(row.getCell(separatorIndex + 5)));
+                                IStatus status = newFilter.validateExpression();
+                                
+                                if (status.getSeverity() != Severity.OK) {
+                                    errorSet.addError(new ExcelError("Invalid filter expression", rowIndex + 1, separatorIndex + 5));
+                                }
+                            } else {
+                                errorSet.addError(
+                                        new ExcelError("Invalid filter type", rowIndex + 1, separatorIndex + 3));
+                            }
+                            break;
+
                         default:
-                            LOGGER.warning("Unknown item type: " + itemType);
+                            errorSet.addError(new ExcelError("Unknown item type: " + itemType, rowIndex + 1, separatorIndex + 2));
                     }
                 } catch (Exception e) {
                     LOGGER.severe("Failed to process item: " + itemName + ". Error: " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
         }

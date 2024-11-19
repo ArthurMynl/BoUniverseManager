@@ -1,6 +1,5 @@
 package main.java.com.ardian.bouniversemanager.connection;
 
-import java.nio.file.Paths;
 import java.util.logging.Logger;
 
 import com.crystaldecisions.sdk.exception.SDKException;
@@ -11,7 +10,6 @@ import com.sap.sl.sdk.framework.SlContext;
 import com.sap.sl.sdk.framework.cms.CmsSessionService;
 
 import main.java.com.ardian.bouniversemanager.configuration.AppConfig;
-import main.java.com.ardian.bouniversemanager.services.FileSystemCleaner;
 
 public class BoConnectionManager {
 

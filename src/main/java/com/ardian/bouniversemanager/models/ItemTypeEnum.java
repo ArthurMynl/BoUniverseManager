@@ -3,7 +3,8 @@ package main.java.com.ardian.bouniversemanager.models;
 public enum ItemTypeEnum {
     FOLDER,
     DIMENSION,
-    MEASURE;
+    MEASURE,
+    FILTER;
 
     public static ItemTypeEnum fromString(String type) {
         try {

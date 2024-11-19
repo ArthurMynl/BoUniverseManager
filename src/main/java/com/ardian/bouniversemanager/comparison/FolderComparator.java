@@ -35,6 +35,8 @@ public class FolderComparator {
         buildItemMaps(localRootFolder, "", localItemParentPaths, localItemNames);
         buildItemMaps(serverRootFolder, "", serverItemParentPaths, serverItemNames);
 
+        // System.out.println(serverItemParentPaths);
+
         // Compare items
         compareItems(localRootFolder, serverRootFolder);
 

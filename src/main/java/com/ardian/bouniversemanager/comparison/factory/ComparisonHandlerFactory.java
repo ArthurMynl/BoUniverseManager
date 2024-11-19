@@ -7,11 +7,13 @@ import java.util.logging.Logger;
 
 import com.sap.sl.sdk.authoring.businesslayer.BlItem;
 import com.sap.sl.sdk.authoring.businesslayer.Dimension;
+import com.sap.sl.sdk.authoring.businesslayer.Filter;
 import com.sap.sl.sdk.authoring.businesslayer.Measure;
 
 import main.java.com.ardian.bouniversemanager.comparison.handlers.ComparisonHandler;
 import main.java.com.ardian.bouniversemanager.comparison.handlers.DefaultComparisonHandler;
 import main.java.com.ardian.bouniversemanager.comparison.handlers.DimensionComparisonHandler;
+import main.java.com.ardian.bouniversemanager.comparison.handlers.FilterComparisonHandler;
 import main.java.com.ardian.bouniversemanager.comparison.handlers.MeasureComparisonHandler;
 
 public class ComparisonHandlerFactory {
@@ -22,7 +24,7 @@ public class ComparisonHandlerFactory {
         // Register handlers for each BlItem type
         handlerMap.put(Dimension.class, new DimensionComparisonHandler());
         handlerMap.put(Measure.class, new MeasureComparisonHandler());
-        // Add new handlers here as needed
+        handlerMap.put(Filter.class, new FilterComparisonHandler());
     }
 
     /**
@@ -38,7 +40,6 @@ public class ComparisonHandlerFactory {
             .findFirst();
 
         if (handlerEntry.isPresent()) {
-            LOGGER.info("Handler found for type: " + handlerEntry.get().getKey().getSimpleName());
             return handlerEntry.get().getValue();
         } else {
             LOGGER.info("No specific handler found for type: " + item.getClass().getSimpleName() + ". Using DefaultComparisonHandler.");
