@@ -12,6 +12,7 @@ import java.util.logging.Logger;
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
@@ -55,22 +56,55 @@ public class ExcelUtil {
 
         Workbook workbook = new XSSFWorkbook();
         Sheet sheet = workbook.createSheet("BLX Export");
+        CellStyle darkStyle = workbook.createCellStyle();
+        darkStyle.setFillForegroundColor(IndexedColors.GREY_40_PERCENT.getIndex());
+        darkStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
         // Step 1: Calculate max depth of the BLX structure
-        int maxDepth = getMaxDepth(rootFolder, 0); 
+        int maxDepth = getMaxDepth(rootFolder, 0);
         System.out.println("Max depth: " + maxDepth);
 
         // Step 2: Create header row
-        createHeaderRow(sheet, maxDepth, workbook);
+        Row headerRow = sheet.createRow(0);
+
+        Cell fileTreeHeaderCell = headerRow.createCell(0);
+        fileTreeHeaderCell.setCellValue("FILE TREE");
+
+        // Style for the header
+        CellStyle headerStyle = workbook.createCellStyle();
+        Font headerFont = workbook.createFont();
+        headerFont.setBold(true);
+        headerStyle.setFont(headerFont);
+        fileTreeHeaderCell.setCellStyle(headerStyle);
+
+        // Set detail headers
+        String[] detailHeaders = { "ID", "DESCRIPTION", "ITEM TYPE", "DATA TYPE", "SELECT", "WHERE" };
+        for (int i = 0; i < detailHeaders.length; i++) {
+            Cell cell = headerRow.createCell(maxDepth + i);
+            cell.setCellValue(detailHeaders[i]);
+            cell.setCellStyle(headerStyle);
+        }
 
         // Step 3: Write BLX items data
         currentRowNum = 1; // Reset row counter
         for (BlItem child : rootFolder.getChildren()) {
-            writeBlxItemsToSheet(child, sheet, 0, maxDepth);
+            writeBlxItemsToSheet(child, sheet, 0, maxDepth, darkStyle);
         }
 
         // Step 4: Add double border to separate sections
-        addDoubleBorder(sheet, maxDepth, workbook);
+        CellStyle borderStyle = workbook.createCellStyle();
+        borderStyle.setBorderRight(BorderStyle.DOUBLE);
+
+        for (int i = 0; i <= sheet.getLastRowNum(); i++) {
+            Row row = sheet.getRow(i);
+            if (row != null) {
+                Cell borderCell = row.getCell(maxDepth - 1);
+                if (borderCell == null) {
+                    borderCell = row.createCell(maxDepth - 1);
+                }
+                borderCell.setCellStyle(borderStyle);
+            }
+        }
 
         // Step 5: Adjust column widths
         int totalColumns = maxDepth + 6; // 6 = number of detail headers (ID, DESCRIPTION, etc.)
@@ -106,34 +140,7 @@ public class ExcelUtil {
         }
     }
 
-    private static void createHeaderRow(Sheet sheet, int maxDepth, Workbook workbook) {
-        Row headerRow = sheet.createRow(0);
-
-        // Merge cells for the "FILE TREE" section header
-        CellRangeAddress mergedRegion = new CellRangeAddress(0, 0, 0, maxDepth - 1);
-        sheet.addMergedRegion(mergedRegion);
-
-        Cell fileTreeHeaderCell = headerRow.createCell(0);
-        fileTreeHeaderCell.setCellValue("FILE TREE");
-
-        // Style for the header
-        CellStyle headerStyle = workbook.createCellStyle();
-        Font headerFont = workbook.createFont();
-        headerFont.setBold(true);
-        headerStyle.setFont(headerFont);
-        // headerStyle.setAlignment(HORIZONTAL_CENTER);
-        fileTreeHeaderCell.setCellStyle(headerStyle);
-
-        // Set detail headers
-        String[] detailHeaders = { "ID", "DESCRIPTION", "ITEM TYPE", "DATA TYPE", "SELECT", "WHERE" };
-        for (int i = 0; i < detailHeaders.length; i++) {
-            Cell cell = headerRow.createCell(maxDepth + i);
-            cell.setCellValue(detailHeaders[i]);
-            cell.setCellStyle(headerStyle);
-        }
-    }
-
-    private static void writeBlxItemsToSheet(BlItem blItem, Sheet sheet, int depth, int maxDepth) {
+    private static void writeBlxItemsToSheet(BlItem blItem, Sheet sheet, int depth, int maxDepth, CellStyle darkStyle) {
         Row row = sheet.createRow(currentRowNum++);
 
         // Indent by depth: place the name at the correct column for indentation
@@ -201,7 +208,10 @@ public class ExcelUtil {
 
                 // FILTER TYPE
                 Cell filterTypeCell = row.createCell(colIndex++);
-                colIndex++; // skip the select column
+                
+                // SELECT
+                Cell selectCell = row.createCell(colIndex++);
+                selectCell.setCellStyle(darkStyle);
 
                 if (filter instanceof NativeRelationalFilter) {
                     filterTypeCell.setCellValue("NATIVE");
@@ -235,37 +245,26 @@ public class ExcelUtil {
             // ITEM TYPE
             Cell itemTypeCell = row.createCell(colIndex++);
             itemTypeCell.setCellValue("FOLDER");
+
+            for (int i = colIndex; i <= maxDepth + 5; i++) { // 5 = number of detail headers (ID, DESCRIPTION, etc.) - 1
+                Cell cell = row.createCell(i);
+                cell.setCellStyle(darkStyle);
+            }
         }
         // Recursively process children if it's a folder
         if (blItem instanceof Folder) {
             Folder folder = (Folder) blItem;
             if (folder.getChildren() != null) {
                 for (BlItem child : folder.getChildren()) {
-                    writeBlxItemsToSheet(child, sheet, depth + 1, maxDepth);
+                    writeBlxItemsToSheet(child, sheet, depth + 1, maxDepth, darkStyle);
                 }
-            }
-        }
-    }
-
-    private static void addDoubleBorder(Sheet sheet, int maxDepth, Workbook workbook) {
-        CellStyle borderStyle = workbook.createCellStyle();
-        borderStyle.setBorderRight(BorderStyle.DOUBLE);
-
-        for (int i = 0; i <= sheet.getLastRowNum(); i++) {
-            Row row = sheet.getRow(i);
-            if (row != null) {
-                Cell borderCell = row.getCell(maxDepth - 1);
-                if (borderCell == null) {
-                    borderCell = row.createCell(maxDepth - 1);
-                }
-                borderCell.setCellStyle(borderStyle);
             }
         }
     }
 
     public static Universe readUniverseFromExcel(File inputFile, SlContext context, Universe serverUniverse)
             throws IOException {
-        
+
         ExcelErrorSet errorSet = new ExcelErrorSet();
 
         RelationalBusinessLayer serverBusinessLayer = serverUniverse.getBlx();
@@ -277,7 +276,6 @@ public class ExcelUtil {
 
         // BLX -> Root folder -> BLItems
         RootFolder rootFolder = blx.getRootFolder();
-        // rootFolder.setIdentifier("rootFolder");
 
         try (FileInputStream fis = new FileInputStream(inputFile); XSSFWorkbook workbook = new XSSFWorkbook(fis)) {
             Sheet sheet = workbook.getSheetAt(0);
@@ -349,7 +347,7 @@ public class ExcelUtil {
                                 errorSet.addError(
                                         new ExcelError("Invalid data type", rowIndex + 1, separatorIndex + 3));
                             }
-                            
+
                             RelationalBinding binding = (RelationalBinding) newDimension.getBinding();
                             binding.setSelect(getCellValue(row.getCell(separatorIndex + 4)));
                             binding.setWhere(getCellValue(row.getCell(separatorIndex + 5)));
@@ -380,13 +378,15 @@ public class ExcelUtil {
 
                         case ITEM_TYPE_FILTER:
                             String filterType = getCellValue(row.getCell(separatorIndex + 3));
-                            
+
                             if (filterType.equals("NATIVE")) {
                                 NativeRelationalFilter newFilter;
                                 if (!itemID.isEmpty()) {
-                                    newFilter = blxFactory.createBlItem(NativeRelationalFilter.class, itemName, currentParent, itemID);
+                                    newFilter = blxFactory.createBlItem(NativeRelationalFilter.class, itemName,
+                                            currentParent, itemID);
                                 } else {
-                                    newFilter = blxFactory.createBlItem(NativeRelationalFilter.class, itemName, currentParent);
+                                    newFilter = blxFactory.createBlItem(NativeRelationalFilter.class, itemName,
+                                            currentParent);
                                 }
                                 newFilter.setDescription(getCellValue(row.getCell(separatorIndex + 1)));
 
@@ -395,16 +395,18 @@ public class ExcelUtil {
                             } else if (filterType.equals("BUSINESS")) {
                                 BusinessFilter newFilter;
                                 if (!itemID.isEmpty()) {
-                                    newFilter = blxFactory.createBlItem(BusinessFilter.class, itemName, currentParent, itemID);
+                                    newFilter = blxFactory.createBlItem(BusinessFilter.class, itemName, currentParent,
+                                            itemID);
                                 } else {
                                     newFilter = blxFactory.createBlItem(BusinessFilter.class, itemName, currentParent);
                                 }
                                 newFilter.setDescription(getCellValue(row.getCell(separatorIndex + 1)));
                                 newFilter.setExpression(getCellValue(row.getCell(separatorIndex + 5)));
                                 IStatus status = newFilter.validateExpression();
-                                
+
                                 if (status.getSeverity() != Severity.OK) {
-                                    errorSet.addError(new ExcelError("Invalid filter expression", rowIndex + 1, separatorIndex + 5));
+                                    errorSet.addError(new ExcelError("Invalid filter expression", rowIndex + 1,
+                                            separatorIndex + 5));
                                 }
                             } else {
                                 errorSet.addError(
@@ -413,7 +415,8 @@ public class ExcelUtil {
                             break;
 
                         default:
-                            errorSet.addError(new ExcelError("Unknown item type: " + itemType, rowIndex + 1, separatorIndex + 2));
+                            errorSet.addError(
+                                    new ExcelError("Unknown item type: " + itemType, rowIndex + 1, separatorIndex + 2));
                     }
                 } catch (Exception e) {
                     LOGGER.severe("Failed to process item: " + itemName + ". Error: " + e.getMessage());
@@ -421,7 +424,7 @@ public class ExcelUtil {
                 }
             }
         }
-        
+
         if (errorSet.getErrors().size() > 0) {
             throw new IOException("Errors found in Excel file: \n" + errorSet.toString());
         }
