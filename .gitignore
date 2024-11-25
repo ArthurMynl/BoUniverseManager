@@ -5,5 +5,5 @@ output/**
 logs/**
 
 application.properties
-Trace**
+**.glf
 **.xlsx

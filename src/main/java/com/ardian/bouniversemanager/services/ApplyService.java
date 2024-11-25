@@ -1,7 +1,10 @@
 package main.java.com.ardian.bouniversemanager.services;
 
 import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.logging.Logger;
 
 import com.sap.sl.sdk.authoring.businesslayer.BlContainer;
@@ -40,6 +43,8 @@ public class ApplyService {
 
             ChangeSet changes = ComparisonUtil.compareUniverses(localUniverse, serverUniverse);
 
+            System.out.println(changes.toString());
+
             applyChanges(changes, connection.getContext(), serverUniverse);
         } catch (IOException e) {
             LOGGER.severe(e.getMessage());
@@ -53,25 +58,26 @@ public class ApplyService {
             // 1. Get the local item corresponding to the change
             String identifier = change.getIdentifier();
             BlItem localItem = findItemByIdentifier(serverUniverse.getBlx().getRootFolder(), identifier);
-        
+
             // 2. Apply the change to the local item
             for (ChangeDetail detail : change.getChangeDetails()) {
                 if (detail instanceof MoveChangeDetail) {
                     MoveChangeDetail moveDetail = (MoveChangeDetail) detail;
+                    BlContainer oldParent = (BlContainer) findItemByIdentifier(serverUniverse.getBlx().getRootFolder(), moveDetail.getItem().getParent().getIdentifier());
                     BlContainer newParent = (BlContainer) findItemByIdentifier(serverUniverse.getBlx().getRootFolder(),
                             moveDetail.getNewParentIdentifier());
-                    
+
                     // Delete the item from the old parent
-                    moveDetail.getItem().getParent().getChildren().remove(moveDetail.getItem());
+                    oldParent.getChildren().remove(moveDetail.getOldPosition());
 
                     // Add the item to the new parent
-                    newParent.getChildren().add(moveDetail.getItem());
+                    newParent.getChildren().add(moveDetail.getNewPosition(), moveDetail.getItem());
 
                 } else if (detail instanceof UpdateChangeDetail) {
                     UpdateChangeDetail updateDetail = (UpdateChangeDetail) detail;
                     String field = updateDetail.getField();
                     BlItem newItem = updateDetail.getNewItem();
-        
+
                     if (localItem != null && newItem != null) {
                         // Apply the change based on the field
                         switch (field) {
@@ -81,7 +87,18 @@ public class ApplyService {
                             case "description":
                                 localItem.setDescription(newItem.getDescription());
                                 break;
-                            // Add cases for other fields as needed
+                            // case "dataType":
+                            // Dimension dimension = (Dimension) localItem;
+                            // dimension.setDataType(newItem.getDataType());
+                            // break;
+                            // case "select":
+                            // RelationalBinding binding = (RelationalBinding) localItem.getBinding();
+                            // binding.setSelect(newItem.getSelect());
+                            // break;
+                            // case "where":
+                            // binding = (RelationalBinding) localItem.getBinding();
+                            // binding.setWhere(newItem.getWhere());
+                            // break;
                             default:
                                 System.out.println("Unknown field: " + field);
                                 break;
@@ -94,18 +111,50 @@ public class ApplyService {
                     BlItem newItem = addDetail.getItem();
                     BlContainer newParent = (BlContainer) findItemByIdentifier(serverUniverse.getBlx().getRootFolder(),
                             addDetail.getParentIdentifier());
-                    newParent.getChildren().add(newItem);
+
+                    newParent.getChildren().add(addDetail.getPosition(), newItem);
                 } else if (detail instanceof DeleteChangeDetail) {
                     DeleteChangeDetail deleteDetail = (DeleteChangeDetail) detail;
                     deleteDetail.getItem().getParent().getChildren().remove(deleteDetail.getItem());
                 }
             }
+        }
 
-            // 4. Update the local item in the local universe
-            LocalResourceService localResourceService = context.getService(LocalResourceService.class);
+        // 4. Update the local item in the local universe
+        LocalResourceService localResourceService = context.getService(LocalResourceService.class);
 
-            localResourceService.save(serverUniverse.getBlx(), "universes" + File.separator + serverUniverse.getName() + ".blx", true);
-        }  
+        File universesDir = new File("universes");
+
+        if (!universesDir.exists() || !universesDir.isDirectory()) {
+            throw new IllegalStateException("Universes directory does not exist or is not a directory.");
+        }
+
+        // Step 2: Find the latest retrieved universe folder
+        File latestUniverseFolder = getLatestUniverseFolder(universesDir);
+
+        if (latestUniverseFolder == null) {
+            throw new IllegalStateException("No existing universe folders found");
+        }
+
+        // Construct the path for the .blx file within the latest universe folder
+        String blxFilePath = latestUniverseFolder.getAbsolutePath() + File.separator + serverUniverse.getName()
+                + ".blx";
+
+        // Step 3: if there is a .blx file in the latest universe folder, rename it to
+        // _OLD.blx
+        File blxFile = new File(blxFilePath);
+        if (blxFile.exists()) {
+            File oldBlxFile = new File(blxFilePath.replace(".blx", "_OLD.blx"));
+            if (!oldBlxFile.exists()) {
+                blxFile.renameTo(oldBlxFile);
+            }
+        }
+
+        // Step 4: Save the updated .blx file
+        boolean overwrite = true; // Set to true to overwrite existing file
+        localResourceService.save(serverUniverse.getBlx(), blxFilePath, overwrite);
+
+        System.out.println("Successfully updated the local universe at: " + blxFilePath);
     }
 
     private Universe fetchServerUniverse(SlContext context, String universeName) {
@@ -148,5 +197,38 @@ public class ApplyService {
             }
         }
         return null;
+    }
+
+    /**
+     * Helper method to find the latest universe folder based on timestamp.
+     *
+     * @param universesDir The base universes directory.
+     * @param universeName The name of the universe to filter folders.
+     * @return The latest universe folder, or null if none found.
+     */
+    private File getLatestUniverseFolder(File universesDir) {
+        // Filter directories that match the universe name pattern
+        File[] universeFolders = universesDir.listFiles(new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                File potentialDir = new File(dir, name);
+                return potentialDir.isDirectory();
+            }
+        });
+
+        if (universeFolders == null || universeFolders.length == 0) {
+            return null;
+        }
+
+        // Sort the folders by last modified date in descending order
+        Arrays.sort(universeFolders, new Comparator<File>() {
+            @Override
+            public int compare(File f1, File f2) {
+                return Long.compare(f2.lastModified(), f1.lastModified());
+            }
+        });
+
+        // The first element after sorting is the latest folder
+        return universeFolders[0];
     }
 }

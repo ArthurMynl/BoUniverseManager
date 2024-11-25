@@ -98,6 +98,7 @@ public class FolderComparator {
                     if (!getIdentifierByPath(serverEntries, delta.getSource().getLines().get(0)).equals(
                             getIdentifierByPath(localEntries, delta.getTarget().getLines().get(0)))) {
                         insertions.add(delta);
+                        deletions.add(delta);
                     }
                     break;
                 default:
@@ -219,7 +220,7 @@ public class FolderComparator {
 
     private String getIdentifierByPath(List<ItemEntry> entries, String path) {
         for (ItemEntry entry : entries) {
-            if (entry.getPath().equals(path)) {
+            if (entry.getPath().equals(path) || entry.getPath().equals("/" + path)) {
                 return entry.getIdentifier();
             }
         }
