@@ -31,13 +31,35 @@ public class ChangeSet {
         return null;
     }
 
-    public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("---------------------------------\n");
+    public Change getChangeByIdentifier(String identifier) {
         for (Change change : changes) {
-            sb.append(change.toString());
-            sb.append("\n---------------------------------\n");
+            if (change.getIdentifier().equals(identifier)) {
+                return change;
+            }
         }
-        return sb.toString();
+        return null;
+    }    
+
+    public boolean containsChangeForIdentifier(String identifier) {
+        for (Change change : changes) {
+            if (change.getIdentifier().equals(identifier)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public String toString() {
+        if (changes.size() == 0) {
+            return "No changes found.";   
+        } else {
+            StringBuilder sb = new StringBuilder();
+            sb.append("---------------------------------\n");
+            for (Change change : changes) {
+                sb.append(change.toString());
+                sb.append("\n---------------------------------\n");
+            }
+            return sb.toString();
+        }
     }
 }

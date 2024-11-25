@@ -9,7 +9,6 @@ import main.java.com.ardian.bouniversemanager.comparison.ComparisonContext;
 import main.java.com.ardian.bouniversemanager.comparison.FieldComparator;
 import main.java.com.ardian.bouniversemanager.comparison.fieldcomparators.DescriptionComparator;
 import main.java.com.ardian.bouniversemanager.comparison.fieldcomparators.NameComparator;
-import main.java.com.ardian.bouniversemanager.comparison.fieldcomparators.ParentPathComparator;
 
 public class DefaultComparisonHandler implements ComparisonHandler {
     private final List<FieldComparator> fieldComparators;
@@ -17,7 +16,6 @@ public class DefaultComparisonHandler implements ComparisonHandler {
     public DefaultComparisonHandler() {
         this.fieldComparators = new ArrayList<>();
         // Common field comparators
-        this.fieldComparators.add(new ParentPathComparator());
         this.fieldComparators.add(new NameComparator());
         this.fieldComparators.add(new DescriptionComparator());
     }

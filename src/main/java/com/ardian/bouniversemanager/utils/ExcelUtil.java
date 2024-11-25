@@ -18,7 +18,6 @@ import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import com.sap.sl.sdk.authoring.businesslayer.BlContainer;
@@ -326,6 +325,9 @@ public class ExcelUtil {
                             } else {
                                 newFolder = blxFactory.createBlItem(Folder.class, itemName, currentParent);
                             }
+
+                            newFolder.setDescription(getCellValue(row.getCell(separatorIndex + 1)));
+
                             parentStack.push(newFolder); // Push this folder onto the stack as the new parent
                             break;
 

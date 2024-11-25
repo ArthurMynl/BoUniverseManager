@@ -1,11 +1,17 @@
 package main.java.com.ardian.bouniversemanager.comparison;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
+import com.github.difflib.DiffUtils;
+import com.github.difflib.patch.AbstractDelta;
+import com.github.difflib.patch.Patch;
 import com.sap.sl.sdk.authoring.businesslayer.BlItem;
 import com.sap.sl.sdk.authoring.businesslayer.Folder;
 import com.sap.sl.sdk.authoring.businesslayer.RootFolder;
@@ -15,120 +21,262 @@ import main.java.com.ardian.bouniversemanager.comparison.handlers.ComparisonHand
 
 public class FolderComparator {
     private ChangeSet changes;
-    private Map<String, String> localItemParentPaths;
-    private Map<String, String> serverItemParentPaths;
-    private Map<String, String> localItemNames;
-    private Map<String, String> serverItemNames;
+
+    private Map<String, BlItem> localItemMap;
+    private Map<String, BlItem> serverItemMap;
 
     private static final Logger LOGGER = Logger.getLogger(FolderComparator.class.getName());
 
     public FolderComparator() {
         this.changes = new ChangeSet();
-        this.localItemParentPaths = new HashMap<>();
-        this.serverItemParentPaths = new HashMap<>();
-        this.localItemNames = new HashMap<>();
-        this.serverItemNames = new HashMap<>();
+        this.localItemMap = new HashMap<>();
+        this.serverItemMap = new HashMap<>();
     }
 
     public ChangeSet compareRootFolders(RootFolder localRootFolder, RootFolder serverRootFolder) {
-        // Build maps of items for local and server structures
-        buildItemMaps(localRootFolder, "", localItemParentPaths, localItemNames);
-        buildItemMaps(serverRootFolder, "", serverItemParentPaths, serverItemNames);
+        List<ItemEntry> localEntries = new ArrayList<>();
+        List<ItemEntry> serverEntries = new ArrayList<>();
 
-        // System.out.println(serverItemParentPaths);
+        // Flatten folder structures into ordered lists
+        flattenFolderStructure(localRootFolder, "", localEntries, localItemMap);
+        flattenFolderStructure(serverRootFolder, "", serverEntries, serverItemMap);
 
-        // Compare items
-        compareItems(localRootFolder, serverRootFolder);
+        // Extract lists of paths for diffing
+        List<String> localPaths = localEntries.stream()
+                .map(ItemEntry::getPath)
+                .collect(Collectors.toList());
+        List<String> serverPaths = serverEntries.stream()
+                .map(ItemEntry::getPath)
+                .collect(Collectors.toList());
+
+        // Compute diffs
+        Patch<String> patch = DiffUtils.diff(serverPaths, localPaths);
+        List<AbstractDelta<String>> deltas = patch.getDeltas();
+
+        // Process deltas
+        processDeltas(deltas, localEntries, serverEntries);
 
         return changes;
     }
 
-    private void buildItemMaps(Folder folder, String parentPath, Map<String, String> itemParentPaths,
-            Map<String, String> itemNames) {
+    private void flattenFolderStructure(Folder folder, String parentPath, List<ItemEntry> entries,
+            Map<String, BlItem> itemMap) {
         String currentPath = parentPath.isEmpty() ? folder.getName() : parentPath + "/" + folder.getName();
 
-        // Traverse all children
-        for (BlItem child : folder.getChildren()) {
+        List<BlItem> children = folder.getChildren();
+        for (int position = 0; position < children.size(); position++) {
+            BlItem child = children.get(position);
+            String itemPath = currentPath + "/" + child.getName();
+            String parentIdentifier = folder.getIdentifier(); // Get the parent folder's identifier
+            entries.add(new ItemEntry(child.getIdentifier(), itemPath, position, parentIdentifier));
+            itemMap.put(child.getIdentifier(), child);
+
             if (child instanceof Folder) {
-                Folder subFolder = (Folder) child;
-                buildItemMaps(subFolder, currentPath, itemParentPaths, itemNames); // Recurse into subfolder
-            } else {
-                // It's a BlItem that is not a Folder
-                itemParentPaths.put(child.getIdentifier(), currentPath); // Store parent path
-                itemNames.put(child.getIdentifier(), child.getName()); // Store item name
+                flattenFolderStructure((Folder) child, currentPath, entries, itemMap);
             }
         }
     }
 
-    private void compareItems(RootFolder localRootFolder, RootFolder serverRootFolder) {
-        Set<String> allItemIdentifiers = new HashSet<>();
-        allItemIdentifiers.addAll(localItemNames.keySet());
-        allItemIdentifiers.addAll(serverItemNames.keySet());
+    private void processDeltas(List<AbstractDelta<String>> deltas, List<ItemEntry> localEntries,
+            List<ItemEntry> serverEntries) {
+        List<AbstractDelta<String>> deletions = new ArrayList<>();
+        List<AbstractDelta<String>> insertions = new ArrayList<>();
 
-        for (String identifier : allItemIdentifiers) {
-            String localParentPath = localItemParentPaths.get(identifier);
-            String serverParentPath = serverItemParentPaths.get(identifier);
-            String localName = localItemNames.get(identifier);
-            String serverName = serverItemNames.get(identifier);
+        for (AbstractDelta<String> delta : deltas) {
+            switch (delta.getType()) {
+                case DELETE:
+                    deletions.add(delta);
+                    break;
+                case INSERT:
+                    insertions.add(delta);
+                    break;
+                case CHANGE:
+                    // 1. check if the change is a rename (id as changed or not)
+                    // 2. if it's a rename, do nothing
+                    // 3. else, it must be a creation of a new item, so add it
 
-            if (localParentPath != null && serverParentPath != null) {
-                // Item exists in both structures
-                BlItem localItem = findItemByIdentifier(localRootFolder, identifier);
-                BlItem serverItem = findItemByIdentifier(serverRootFolder, identifier);
+                    if (!getIdentifierByPath(serverEntries, delta.getSource().getLines().get(0)).equals(
+                            getIdentifierByPath(localEntries, delta.getTarget().getLines().get(0)))) {
+                        insertions.add(delta);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
 
-                if (localItem == null || serverItem == null) {
-                    LOGGER.warning("Could not find items for identifier: " + identifier);
-                    continue;
+        Map<String, String> deletedItems = new HashMap<>();
+        Map<String, String> insertedItems = new HashMap<>();
+        Map<String, Integer> deletedPositions = new HashMap<>();
+        Map<String, Integer> insertedPositions = new HashMap<>();
+
+        // Build maps of deleted and inserted items by identifier
+        for (AbstractDelta<String> deletion : deletions) {
+            List<String> lines = deletion.getSource().getLines();
+            for (String line : lines) {
+                String identifier = getIdentifierByPath(serverEntries, line);
+                if (identifier != null) {
+                    deletedItems.put(identifier, line);
                 }
+            }
+        }
 
-                // Get the appropriate ComparisonHandler
+        for (AbstractDelta<String> insertion : insertions) {
+            List<String> lines = insertion.getTarget().getLines();
+            for (String line : lines) {
+                String identifier = getIdentifierByPath(localEntries, line);
+                if (identifier != null) {
+                    insertedItems.put(identifier, line);
+                }
+            }
+        }
+
+        // Match deletions and insertions to detect moves
+        List<String> matchedIdentifiers = new ArrayList<>();
+        for (Map.Entry<String, String> deletedEntry : deletedItems.entrySet()) {
+            String identifier = deletedEntry.getKey();
+            String deletedPath = deletedEntry.getValue();
+
+            if (insertedItems.containsKey(identifier)) {
+                String insertedPath = insertedItems.get(identifier);
+                // It's a move
+                BlItem item = localItemMap.get(identifier);
+                ItemEntry localEntry = getItemEntryByIdentifier(localEntries, identifier);
+                ItemEntry serverEntry = getItemEntryByIdentifier(serverEntries, identifier);
+
+                String newParentIdentifier = localEntry.getParentIdentifier();
+                int oldPosition = serverEntry.getPosition();
+                int newPosition = localEntry.getPosition();
+
+                Change change = new Change(identifier, item.getName());
+                change.addChangeDetail(new MoveChangeDetail(
+                        deletedPath, insertedPath, item, newParentIdentifier, oldPosition, newPosition));
+                changes.addChange(change);
+
+                LOGGER.info("Moved item detected: " + identifier);
+
+                matchedIdentifiers.add(identifier);
+            }
+        }
+
+        // Remove matched items
+        for (String identifier : matchedIdentifiers) {
+            deletedItems.remove(identifier);
+            insertedItems.remove(identifier);
+            deletedPositions.remove(identifier);
+            insertedPositions.remove(identifier);
+        }
+
+        // Remaining deletions are actual deletions
+        for (Map.Entry<String, String> entry : deletedItems.entrySet()) {
+            String identifier = entry.getKey();
+            String path = entry.getValue();
+            BlItem item = serverItemMap.get(identifier);
+
+            Change change = new Change(identifier, item.getName());
+            change.addChangeDetail(new DeleteChangeDetail(item, path));
+            changes.addChange(change);
+
+        }
+
+        // Remaining insertions are actual additions
+        for (Map.Entry<String, String> entry : insertedItems.entrySet()) {
+            String identifier = entry.getKey();
+            String path = entry.getValue();
+            BlItem item = localItemMap.get(identifier);
+            String parentIdentifier = getParentIdentifierByPath(path, localEntries);
+            ItemEntry localEntry = getItemEntryByIdentifier(localEntries, identifier);
+            int position = localEntry.getPosition();
+
+            Change change = new Change(identifier, item.getName());
+            change.addChangeDetail(new AddChangeDetail(item, path, parentIdentifier, position));
+            changes.addChange(change);
+        }
+
+        // Handle modifications for items that exist in both structures and didn't move
+        Set<String> commonIdentifiers = new HashSet<>();
+        for (ItemEntry localEntry : localEntries) {
+            String identifier = localEntry.getIdentifier();
+            if (!matchedIdentifiers.contains(identifier) && serverItemMap.containsKey(identifier)) {
+                commonIdentifiers.add(identifier);
+            }
+        }
+
+        for (String identifier : commonIdentifiers) {
+            BlItem localItem = localItemMap.get(identifier);
+            BlItem serverItem = serverItemMap.get(identifier);
+
+            if (localItem != null && serverItem != null) {
                 ComparisonHandler handler = ComparisonHandlerFactory.getHandler(localItem);
-
-                // Compare fields and record changes
                 boolean hasChange = handler.compareFields(localItem, serverItem, identifier, changes);
 
                 if (hasChange) {
                     LOGGER.info("Change detected for identifier: " + identifier);
                 }
-            } else if (localParentPath != null) {
-                Change change = new Change(identifier, localName);
-                BlItem item = findItemByIdentifier(localRootFolder, identifier);
-                if (item != null) {
-                    change.addChangeDetail(
-                            new AddChangeDetail(item, localParentPath, item.getParent().getIdentifier()));
-                    changes.addChange(change);
-                    LOGGER.info("Added item detected: " + identifier);
-                } else {
-                    LOGGER.warning("Added item not found for identifier: " + identifier);
-                }
-            } else if (serverParentPath != null) {
-                // Item has been deleted
-                Change change = new Change(identifier, serverName);
-                BlItem item = findItemByIdentifier(serverRootFolder, identifier);
-                if (item != null) {
-                    change.addChangeDetail(new DeleteChangeDetail(item, serverParentPath));
-                    changes.addChange(change);
-                    LOGGER.info("Deleted item detected: " + identifier);
-                } else {
-                    LOGGER.warning("Deleted item not found for identifier: " + identifier);
-                }
             }
         }
     }
 
-    
-    private BlItem findItemByIdentifier(Folder folder, String identifier) {
-        for (BlItem child : folder.getChildren()) {
-            if (child.getIdentifier().equals(identifier)) {
-                return child;
-            }
-            if (child instanceof Folder) {
-                BlItem result = findItemByIdentifier((Folder) child, identifier);
-                if (result != null) {
-                    return result;
-                }
+    private String getIdentifierByPath(List<ItemEntry> entries, String path) {
+        for (ItemEntry entry : entries) {
+            if (entry.getPath().equals(path)) {
+                return entry.getIdentifier();
             }
         }
         return null;
+    }
+
+    private String getParentIdentifierByPath(String path, List<ItemEntry> entries) {
+        int lastSlashIndex = path.lastIndexOf('/');
+        if (lastSlashIndex > 0) {
+            String parentPath = path.substring(0, lastSlashIndex);
+            return getIdentifierByPath(entries, parentPath);
+        }
+        return null;
+    }
+
+    private ItemEntry getItemEntryByIdentifier(List<ItemEntry> entries, String identifier) {
+        for (ItemEntry entry : entries) {
+            if (entry.getIdentifier().equals(identifier)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    // Helper class to represent items in the flattened list
+    public static class ItemEntry {
+        private String identifier;
+        private String path;
+        private int position; // Position within the parent folder
+        private String parentIdentifier;
+
+        public ItemEntry(String identifier, String path, int position, String parentIdentifier) {
+            this.identifier = identifier;
+            this.path = path;
+            this.position = position;
+            this.parentIdentifier = parentIdentifier;
+        }
+
+        public String getIdentifier() {
+            return identifier;
+        }
+
+        public String getPath() {
+            return path;
+        }
+
+        public int getPosition() {
+            return position;
+        }
+
+        public String getParentIdentifier() {
+            return parentIdentifier;
+        }
+
+        @Override
+        public String toString() {
+            return identifier + "@" + path;
+        }
     }
 }

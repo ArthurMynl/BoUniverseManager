@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.logging.Logger;
 
+import com.sap.sl.sdk.authoring.businesslayer.Folder;
 import com.sap.sl.sdk.authoring.businesslayer.BlItem;
 import com.sap.sl.sdk.authoring.businesslayer.Dimension;
 import com.sap.sl.sdk.authoring.businesslayer.Filter;
@@ -25,6 +26,7 @@ public class ComparisonHandlerFactory {
         handlerMap.put(Dimension.class, new DimensionComparisonHandler());
         handlerMap.put(Measure.class, new MeasureComparisonHandler());
         handlerMap.put(Filter.class, new FilterComparisonHandler());
+        handlerMap.put(Folder.class, new DefaultComparisonHandler());
     }
 
     /**

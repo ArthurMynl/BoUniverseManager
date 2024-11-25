@@ -7,12 +7,14 @@ public class AddChangeDetail implements ChangeDetail {
     private BlItem item;
     private String path;
     private String parentIdentifier;
+    private int position;
 
-    public AddChangeDetail(BlItem item, String path, String parentIdentifier) {
+    public AddChangeDetail(BlItem item, String path, String parentIdentifier, int position) {
         this.item = item;
         this.type = ChangeType.ADD;
         this.path = path;
         this.parentIdentifier = parentIdentifier;
+        this.position = position;
     }
 
     public BlItem getItem() {
@@ -27,6 +29,10 @@ public class AddChangeDetail implements ChangeDetail {
         return parentIdentifier;
     }
 
+    public int getPosition() {	    
+        return position;
+    }
+
     @Override
     public ChangeType getType() {
         return type;
@@ -34,6 +40,6 @@ public class AddChangeDetail implements ChangeDetail {
 
     @Override
     public String toString() {
-        return type + ": Added item: '" + (item != null ? item.getName() : "null") + "' to '" + path + "'";
+        return type + ": Added item: '" + (item != null ? item.getName() : "null") + "' to '" + path + "' at position " + (position + 1);
     }
 }
