@@ -10,6 +10,7 @@ import com.sap.sl.sdk.framework.SlContext;
 import com.sap.sl.sdk.framework.cms.CmsSessionService;
 
 import main.java.com.ardian.bouniversemanager.configuration.AppConfig;
+import main.java.com.ardian.bouniversemanager.services.FileCleanerService;
 
 public class BoConnectionManager {
 
@@ -58,5 +59,9 @@ public class BoConnectionManager {
             context.close();
             enterpriseSession.logoff();
         }
+
+        // delete all the retrived universes apart from the last one
+        FileCleanerService fileCleanerService = new FileCleanerService();
+        fileCleanerService.cleanupUniverseFolders();
     }
 }
